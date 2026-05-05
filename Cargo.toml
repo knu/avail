@@ -1,0 +1,21 @@
+[package]
+name = "avail-cli"
+version = "0.1.0"
+edition = "2024"
+authors = ["Akinori Musha <knu@idaemons.org>"]
+default-run = "avail"
+description = "Check tool name availability and uniqueness"
+license = "MIT"
+repository = "https://github.com/knu/avail"
+
+[[bin]]
+name = "avail"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+percent-encoding = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", features = ["json"] }
