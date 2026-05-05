@@ -7,6 +7,9 @@ default-run = "avail"
 description = "Check tool name availability and uniqueness"
 license = "MIT"
 repository = "https://github.com/knu/avail"
+readme = "README.md"
+keywords = ["availability", "cli", "registry"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "avail"
