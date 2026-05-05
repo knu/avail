@@ -7,7 +7,25 @@ Check tool name availability and uniqueness.
 ## Installation
 
 ```console
-% cargo install --path .
+% cargo install avail-cli --locked
+```
+
+Or install a prebuilt binary from GitHub Releases:
+
+```console
+% curl --proto '=https' --tlsv1.2 -LsSf https://github.com/knu/avail/releases/latest/download/avail-cli-installer.sh | sh
+```
+
+If you use `cargo-binstall`:
+
+```console
+% cargo binstall avail-cli
+```
+
+On Windows:
+
+```console
+> powershell -ExecutionPolicy Bypass -c "irm https://github.com/knu/avail/releases/latest/download/avail-cli-installer.ps1 | iex"
 ```
 
 ## Usage
