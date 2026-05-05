@@ -24,7 +24,7 @@ fn get_git_hash() -> String {
     };
 
     let is_dirty = Command::new("git")
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain", "--untracked-files=no"])
         .output()
         .ok()
         .map(|output| !output.stdout.is_empty())
