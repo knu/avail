@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["availability", "cli", "registry"]
 categories = ["command-line-utilities", "development-tools"]
 
+[package.metadata.release]
+publish = false
+pre-release-commit-message = "Bump version to {{version}}"
+tag-message = "Release version {{version}}"
+
 [[bin]]
 name = "avail"
 path = "src/main.rs"
