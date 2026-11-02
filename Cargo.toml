@@ -1,6 +1,6 @@
 [package]
 name = "avail-cli"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 authors = ["Akinori Musha <knu@idaemons.org>"]
 default-run = "avail"
@@ -13,6 +13,7 @@ categories = ["command-line-utilities", "development-tools"]
 
 [package.metadata.release]
 publish = false
+push = false
 pre-release-commit-message = "Bump version to {{version}}"
 tag-message = "Release version {{version}}"
 
