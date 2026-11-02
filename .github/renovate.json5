@@ -19,6 +19,12 @@
   },
   packageRules: [
     {
+      matchManagers: ["github-actions"],
+      matchDepTypes: ["action"],
+      matchFileNames: [".github/workflows/*.yml", ".github/workflows/*.yaml"],
+      pinDigests: false,
+    },
+    {
       matchUpdateTypes: ["major"],
       addLabels: ["dependencies:major"],
     },
