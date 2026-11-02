@@ -2,9 +2,9 @@ use anyhow::Result;
 use serde::Deserialize;
 
 use crate::http::{http_get_json, url_component};
-use crate::model::Match;
+use crate::model::{Match, MatchKind};
 
-use super::{SearchOutcome, exact_status};
+use super::{SearchOutcome, names_equal};
 
 pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     let exact = http_get_json::<NpmPackage>(&format!(
@@ -14,28 +14,36 @@ pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     let search = http_get_json::<NpmSearchResponse>(&format!(
         "https://registry.npmjs.org/-/v1/search?text={}&size={}",
         url_component(name),
-        limit
+        limit.clamp(1, 250)
     ))?
     .map(|response| response.objects)
     .unwrap_or_default();
 
-    Ok(SearchOutcome {
-        status: exact_status(
-            exact.as_ref().map(|package| package.name.as_str()),
-            name,
-            exact
-                .as_ref()
-                .and_then(|package| package.description.clone()),
-        ),
-        matches: search
-            .into_iter()
-            .map(|object| Match {
-                url: object.package.links.and_then(|links| links.npm),
-                detail: object.package.description,
-                name: object.package.name,
-            })
-            .collect(),
-    })
+    let mut matches: Vec<_> = exact
+        .into_iter()
+        .map(|package| Match {
+            kind: MatchKind::Package,
+            exact: names_equal(&package.name, name),
+            url: Some(format!(
+                "https://www.npmjs.com/package/{}",
+                url_component(&package.name)
+            )),
+            name: package.name,
+            detail: package.description,
+        })
+        .collect();
+    for item in search.into_iter().map(|object| Match {
+        kind: MatchKind::Package,
+        exact: names_equal(&object.package.name, name),
+        url: object.package.links.and_then(|links| links.npm),
+        detail: object.package.description,
+        name: object.package.name,
+    }) {
+        if !matches.iter().any(|existing| existing.name == item.name) {
+            matches.push(item);
+        }
+    }
+    Ok(SearchOutcome::from_matches(matches, limit))
 }
 
 #[derive(Debug, Deserialize)]

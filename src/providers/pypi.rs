@@ -2,34 +2,30 @@ use anyhow::Result;
 use serde::Deserialize;
 
 use crate::http::{http_get_json, url_component};
-use crate::model::{Match, Status};
+use crate::model::{Match, MatchKind};
 
 use super::SearchOutcome;
 
-pub(super) fn search(name: &str, _limit: usize) -> Result<SearchOutcome> {
+pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     let exact = http_get_json::<PypiPackage>(&format!(
         "https://pypi.org/pypi/{}/json",
         url_component(name)
     ))?;
 
-    Ok(SearchOutcome {
-        status: exact_status(
-            exact.as_ref().map(|package| package.info.name.as_str()),
-            name,
-            exact
-                .as_ref()
-                .and_then(|package| package.info.summary.clone()),
-        ),
-        matches: exact
+    Ok(SearchOutcome::from_matches(
+        exact
             .map(|package| {
                 vec![Match {
+                    kind: MatchKind::Package,
+                    exact: pypi_names_equal(&package.info.name, name),
                     url: package.info.project_url,
                     detail: package.info.summary,
                     name: package.info.name,
                 }]
             })
             .unwrap_or_default(),
-    })
+        limit,
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,17 +39,6 @@ struct PypiInfo {
     summary: Option<String>,
     #[serde(rename = "project_url")]
     project_url: Option<String>,
-}
-
-fn exact_status(exact_name: Option<&str>, query: &str, detail: Option<String>) -> Status {
-    match exact_name {
-        Some(name) if pypi_names_equal(name, query) => Status::Taken(
-            detail
-                .filter(|text| !text.trim().is_empty())
-                .unwrap_or_else(|| name.to_string()),
-        ),
-        _ => Status::Available,
-    }
 }
 
 fn pypi_names_equal(left: &str, right: &str) -> bool {

@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::process::Command;
 
 use crate::http::http_get_json;
-use crate::model::{Match, Status};
+use crate::model::{Match, MatchKind};
 
 use super::{SearchOutcome, names_equal};
 
@@ -44,22 +44,17 @@ fn homebrew_result_from_names<I>(names: I, query: &str, limit: usize) -> SearchO
 where
     I: IntoIterator<Item = HomebrewEntry>,
 {
-    let mut status = Status::Available;
-    let mut matches = Vec::with_capacity(limit);
-    for entry in names {
-        if matches!(status, Status::Available) && names_equal(&entry.name, query) {
-            status = Status::Taken(entry.name.clone());
-        }
-        if matches.len() < limit {
-            matches.push(Match {
-                url: Some(entry.url()),
-                detail: None,
-                name: entry.name,
-            });
-        }
-    }
-
-    SearchOutcome { status, matches }
+    let matches = names
+        .into_iter()
+        .map(|entry| Match {
+            kind: MatchKind::Package,
+            exact: names_equal(&entry.name, query),
+            url: Some(entry.url()),
+            detail: None,
+            name: entry.name,
+        })
+        .collect();
+    SearchOutcome::from_matches(matches, limit)
 }
 
 fn parse_homebrew_search_output(output: &str) -> Vec<HomebrewEntry> {
@@ -145,6 +140,7 @@ impl HomebrewEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Status;
 
     #[test]
     fn test_homebrew_result_from_names_marks_exact_match_taken() {

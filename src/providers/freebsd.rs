@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::http::{http_get_text, url_component};
-use crate::model::{Match, Status};
+use crate::model::{Match, MatchKind};
 
 use super::{SearchOutcome, html_decode, html_to_text, names_equal};
 
@@ -37,15 +37,15 @@ pub(super) fn search_base(name: &str, limit: usize) -> Result<SearchOutcome> {
         }
     }
 
-    let status = pages
-        .iter()
-        .find(|page| freebsd_man_page_has_name(&page.name, name))
-        .map(|page| Status::Taken(page.name.clone()))
-        .unwrap_or(Status::Available);
     let matches = pages
         .into_iter()
-        .take(limit)
         .map(|page| Match {
+            kind: if matches!(page.section.as_str(), "1" | "6" | "8") {
+                MatchKind::Command
+            } else {
+                MatchKind::ManualPage
+            },
+            exact: freebsd_man_page_has_name(&page.name, name),
             url: Some(format!(
                 "https://man.freebsd.org/cgi/man.cgi?query={}&sektion={}&manpath={}",
                 url_component(page.primary_name()),
@@ -57,7 +57,7 @@ pub(super) fn search_base(name: &str, limit: usize) -> Result<SearchOutcome> {
         })
         .collect();
 
-    Ok(SearchOutcome { status, matches })
+    Ok(SearchOutcome::from_matches(matches, limit))
 }
 
 fn fetch_freebsd_base_man_page(name: &str, section: &str) -> Result<Option<FreebsdManPage>> {
@@ -81,25 +81,21 @@ pub(super) fn search_ports(name: &str, limit: usize) -> Result<SearchOutcome> {
     .unwrap_or_default();
     let ports = parse_freebsd_ports(&body);
 
-    let status = ports
-        .iter()
-        .find(|port| names_equal(&port.package, name) || names_equal(port.port_name(), name))
-        .map(|port| Status::Taken(port.origin.clone()))
-        .unwrap_or(Status::Available);
     let matches = ports
         .into_iter()
-        .take(limit)
         .map(|port| {
-            let name = port.display_name();
+            let display_name = port.display_name();
             Match {
+                kind: MatchKind::Package,
+                exact: names_equal(&port.package, name) || names_equal(port.port_name(), name),
                 url: Some(format!("https://www.freshports.org/{}/", port.origin)),
                 detail: port.description,
-                name,
+                name: display_name,
             }
         })
         .collect();
 
-    Ok(SearchOutcome { status, matches })
+    Ok(SearchOutcome::from_matches(matches, limit))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

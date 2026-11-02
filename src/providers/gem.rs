@@ -2,9 +2,9 @@ use anyhow::Result;
 use serde::Deserialize;
 
 use crate::http::{http_get_json, url_component};
-use crate::model::Match;
+use crate::model::{Match, MatchKind};
 
-use super::{SearchOutcome, exact_status};
+use super::{SearchOutcome, names_equal};
 
 pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     let exact = http_get_json::<GemPackage>(&format!(
@@ -17,22 +17,26 @@ pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     ))?
     .unwrap_or_default();
 
-    Ok(SearchOutcome {
-        status: exact_status(
-            exact.as_ref().map(|gem| gem.name.as_str()),
-            name,
-            exact.as_ref().and_then(|gem| gem.info.clone()),
-        ),
-        matches: search
+    let mut packages = Vec::new();
+    packages.extend(exact);
+    for gem in search {
+        if !packages.iter().any(|existing| existing.name == gem.name) {
+            packages.push(gem);
+        }
+    }
+    Ok(SearchOutcome::from_matches(
+        packages
             .into_iter()
-            .take(limit)
             .map(|gem| Match {
+                kind: MatchKind::Package,
+                exact: names_equal(&gem.name, name),
                 url: gem.project_uri,
                 detail: gem.info,
                 name: gem.name,
             })
             .collect(),
-    })
+        limit,
+    ))
 }
 
 #[derive(Debug, Deserialize)]

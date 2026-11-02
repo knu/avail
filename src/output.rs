@@ -58,16 +58,19 @@ impl Output {
 
 fn print_matches(matches: &[Match]) {
     for item in matches {
+        let label = item.label();
         let detail = item
             .detail
             .as_deref()
             .map(first_line)
             .filter(|text| !text.is_empty());
         match (&detail, &item.url) {
-            (Some(detail), Some(url)) => println!("  - {}: {} ({})", item.name, detail, url),
-            (Some(detail), None) => println!("  - {}: {}", item.name, detail),
-            (None, Some(url)) => println!("  - {} ({})", item.name, url),
-            (None, None) => println!("  - {}", item.name),
+            (Some(detail), Some(url)) => {
+                println!("  - {label} {}: {} ({})", item.name, detail, url)
+            }
+            (Some(detail), None) => println!("  - {label} {}: {}", item.name, detail),
+            (None, Some(url)) => println!("  - {label} {} ({})", item.name, url),
+            (None, None) => println!("  - {label} {}", item.name),
         }
     }
 }

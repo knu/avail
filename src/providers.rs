@@ -1,17 +1,57 @@
 use anyhow::Result;
 
-use crate::model::{Match, Provider, ProviderResult, Status};
+use crate::model::{Match, MatchKind, Provider, ProviderResult, Status};
 
+mod alpine;
+mod arch;
+mod aur;
 mod cargo;
 mod debian;
 mod freebsd;
 mod gem;
 mod github;
+mod gitlab;
 mod homebrew;
+mod mise;
+mod nixpkgs;
 mod npm;
+mod nuget;
 mod pypi;
+mod winget;
 
 const PROVIDER_BACKENDS: &[ProviderBackend] = &[
+    ProviderBackend {
+        provider: Provider::Arch,
+        search: arch::search,
+    },
+    ProviderBackend {
+        provider: Provider::Aur,
+        search: aur::search,
+    },
+    ProviderBackend {
+        provider: Provider::Alpine,
+        search: alpine::search,
+    },
+    ProviderBackend {
+        provider: Provider::Nuget,
+        search: nuget::search,
+    },
+    ProviderBackend {
+        provider: Provider::Nixpkgs,
+        search: nixpkgs::search,
+    },
+    ProviderBackend {
+        provider: Provider::Gitlab,
+        search: gitlab::search,
+    },
+    ProviderBackend {
+        provider: Provider::Winget,
+        search: winget::search,
+    },
+    ProviderBackend {
+        provider: Provider::Mise,
+        search: mise::search,
+    },
     ProviderBackend {
         provider: Provider::Cargo,
         search: cargo::search,
@@ -53,7 +93,31 @@ const PROVIDER_BACKENDS: &[ProviderBackend] = &[
 #[derive(Debug)]
 struct SearchOutcome {
     status: Status,
+    matched_kinds: Vec<MatchKind>,
     matches: Vec<Match>,
+}
+
+impl SearchOutcome {
+    fn from_matches(mut matches: Vec<Match>, limit: usize) -> Self {
+        let mut matched_kinds = Vec::new();
+        for item in matches.iter().filter(|item| item.exact) {
+            if !matched_kinds.contains(&item.kind) {
+                matched_kinds.push(item.kind);
+            }
+        }
+        matches.sort_by_key(|item| !item.exact);
+        let status = matches
+            .iter()
+            .find(|item| item.exact)
+            .map(|item| Status::Taken(item.name.clone()))
+            .unwrap_or(Status::Available);
+        matches.truncate(limit);
+        Self {
+            status,
+            matched_kinds,
+            matches,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -68,11 +132,13 @@ impl ProviderBackend {
             Ok(outcome) => ProviderResult {
                 provider: self.provider,
                 status: outcome.status,
+                matched_kinds: outcome.matched_kinds,
                 matches: outcome.matches,
             },
             Err(err) => ProviderResult {
                 provider: self.provider,
-                status: Status::Unknown(err.to_string()),
+                status: Status::Unknown(format!("{err:#}")),
+                matched_kinds: Vec::new(),
                 matches: Vec::new(),
             },
         }
@@ -123,17 +189,54 @@ fn html_decode(input: &str) -> String {
         .replace("&nbsp;", " ")
 }
 
-fn exact_status(exact_name: Option<&str>, query: &str, detail: Option<String>) -> Status {
-    match exact_name {
-        Some(name) if names_equal(name, query) => Status::Taken(
-            detail
-                .filter(|text| !text.trim().is_empty())
-                .unwrap_or_else(|| name.to_string()),
-        ),
-        _ => Status::Available,
-    }
-}
-
 fn names_equal(left: &str, right: &str) -> bool {
     left.eq_ignore_ascii_case(right)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(kind: MatchKind, exact: bool, name: &str) -> Match {
+        Match {
+            kind,
+            exact,
+            name: name.to_string(),
+            detail: None,
+            url: None,
+        }
+    }
+
+    #[test]
+    fn exact_evidence_survives_display_limits() {
+        for limit in [0, 1] {
+            let result = SearchOutcome::from_matches(
+                vec![
+                    item(MatchKind::Package, false, "demo-extra"),
+                    item(MatchKind::Command, true, "tools"),
+                    item(MatchKind::Package, true, "demo"),
+                    item(MatchKind::Command, true, "other-tools"),
+                ],
+                limit,
+            );
+            assert!(matches!(result.status, Status::Taken(_)));
+            assert_eq!(
+                result.matched_kinds,
+                [MatchKind::Command, MatchKind::Package]
+            );
+            assert_eq!(result.matches.len(), limit);
+            assert!(result.matches.iter().all(|item| item.exact));
+        }
+    }
+
+    #[test]
+    fn fuzzy_results_do_not_claim_a_name() {
+        let result = SearchOutcome::from_matches(
+            vec![item(MatchKind::Repository, false, "example/demo-extra")],
+            5,
+        );
+        assert!(matches!(result.status, Status::Available));
+        assert!(result.matched_kinds.is_empty());
+        assert_eq!(result.matches.len(), 1);
+    }
 }

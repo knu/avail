@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::http::{http_get_text, url_component};
-use crate::model::{Match, Status};
+use crate::model::{Match, MatchKind};
 
 use super::{SearchOutcome, html_decode, html_to_text, names_equal};
 
@@ -14,45 +14,30 @@ pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     let packages = parse_debian_package_names(&body);
     let contents = search_contents(name)?;
 
-    let status = packages
-        .iter()
-        .find(|package| names_equal(package, name))
-        .map(|package| Status::Taken(package.clone()))
-        .or_else(|| {
-            contents
-                .iter()
-                .find(|entry| entry.is_command_match(name))
-                .and_then(|entry| entry.packages.first())
-                .map(|package| Status::Taken(format!("{name} is provided by {package}")))
-        })
-        .unwrap_or(Status::Available);
     let mut matches: Vec<Match> = contents
         .iter()
         .filter(|entry| entry.is_command_match(name))
         .flat_map(|entry| {
             entry.packages.iter().map(|package| Match {
+                kind: MatchKind::Command,
+                exact: true,
                 url: Some(format!("https://packages.debian.org/{}", package)),
                 detail: Some(entry.path.clone()),
                 name: package.clone(),
             })
         })
-        .take(limit)
         .collect();
     for package in packages {
-        if matches.len() >= limit {
-            break;
-        }
-        if matches.iter().any(|item| item.name == package) {
-            continue;
-        }
         matches.push(Match {
+            kind: MatchKind::Package,
+            exact: names_equal(&package, name),
             url: Some(format!("https://packages.debian.org/{}", package)),
             detail: None,
             name: package,
         });
     }
 
-    Ok(SearchOutcome { status, matches })
+    Ok(SearchOutcome::from_matches(matches, limit))
 }
 
 fn search_contents(name: &str) -> Result<Vec<DebianContentEntry>> {

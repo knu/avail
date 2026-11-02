@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::io::ErrorKind;
 use std::process::Command;
 
-use crate::model::{Match, Status};
+use crate::model::{Match, MatchKind, Status};
 
 use super::{SearchOutcome, names_equal};
 
@@ -11,7 +11,8 @@ pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
     const GITHUB_EXACT_MATCH_SCAN: usize = 100;
 
     let query = format!("{name} in:name");
-    let fetch_limit = limit.max(GITHUB_EXACT_MATCH_SCAN).to_string();
+    let scan_limit = limit.clamp(GITHUB_EXACT_MATCH_SCAN, 1000);
+    let fetch_limit = scan_limit.to_string();
     let output = Command::new("gh")
         .args([
             "search",
@@ -35,31 +36,30 @@ pub(super) fn search(name: &str, limit: usize) -> Result<SearchOutcome> {
         anyhow::bail!("{}", String::from_utf8_lossy(&output.stderr).trim());
     }
 
-    let mut repos: Vec<GithubRepo> = serde_json::from_slice(&output.stdout)?;
-    let exact_index = repos.iter().position(|repo| {
-        repo.full_name
-            .rsplit('/')
-            .next()
-            .is_some_and(|repo| names_equal(repo, name))
-    });
-    let status = exact_index
-        .and_then(|index| repos.get(index))
-        .map(|repo| Status::Taken(repo.full_name.clone()))
-        .unwrap_or(Status::Available);
-    if let Some(index) = exact_index {
-        repos.swap(0, index);
-    }
+    let repos: Vec<GithubRepo> = serde_json::from_slice(&output.stdout)?;
+    let complete = repos.len() < scan_limit;
     let matches = repos
         .into_iter()
-        .take(limit)
         .map(|repo| Match {
+            kind: MatchKind::Repository,
+            exact: repo
+                .full_name
+                .rsplit('/')
+                .next()
+                .is_some_and(|repo| names_equal(repo, name)),
             name: repo.full_name,
             detail: repo.description,
             url: Some(repo.url),
         })
         .collect::<Vec<_>>();
 
-    Ok(SearchOutcome { status, matches })
+    let mut outcome = SearchOutcome::from_matches(matches, limit);
+    if !complete && matches!(outcome.status, Status::Available) {
+        outcome.status = Status::Unknown(
+            "GitHub search reached its result limit without an exact match".to_string(),
+        );
+    }
+    Ok(outcome)
 }
 
 #[derive(Debug, Deserialize)]

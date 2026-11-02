@@ -23,7 +23,12 @@ pub(super) fn print_result_groups(results: &[ProviderResult]) {
 fn print_provider_status(result: &ProviderResult) {
     match &result.status {
         Status::Available => println!("{:<14} available", result.provider.name()),
-        Status::Taken(detail) => println!("{:<14} taken - {}", result.provider.name(), detail),
+        Status::Taken(detail) => println!(
+            "{:<14} taken ({}) - {}",
+            result.provider.name(),
+            result.match_summary(),
+            detail
+        ),
         Status::Unknown(error) => println!("{:<14} unknown - {}", result.provider.name(), error),
     }
 }

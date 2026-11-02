@@ -6,6 +6,7 @@ use std::thread;
 mod http;
 mod model;
 mod output;
+mod process;
 mod providers;
 
 use model::{Provider, ProviderResult, Report};
@@ -28,7 +29,7 @@ struct Cli {
     #[arg(short, long = "provider", value_enum)]
     providers: Vec<Provider>,
 
-    /// Maximum fuzzy search results per provider
+    /// Maximum results per provider (exact matches first)
     #[arg(short, long, default_value_t = 5)]
     limit: usize,
 

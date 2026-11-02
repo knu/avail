@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::io::Write;
 
-use crate::model::{Match, Provider, ProviderResult, Report, Status};
+use crate::model::{Provider, ProviderResult, Report, Status};
 
 pub struct TtyOutput;
 
@@ -42,16 +42,16 @@ impl TtyOutput {
         println!();
         print!("\x1b[{}A", report.results.len() + 1);
         print!("\x1b[J");
-        print_result_groups(&report.results, &report.name);
+        print_result_groups(&report.results);
         std::io::stdout().flush()?;
         Ok(())
     }
 }
 
-fn print_result_groups(results: &[ProviderResult], query: &str) {
+fn print_result_groups(results: &[ProviderResult]) {
     for result in results {
         print_provider_status(result);
-        print_matches(result, query);
+        print_matches(result);
     }
 }
 
@@ -64,9 +64,10 @@ fn print_provider_status(result: &ProviderResult) {
             colors.green(&pad_status("available"))
         ),
         Status::Taken(_) => println!(
-            "{} {}",
+            "{} {} ({})",
             colors.cyan(&pad_provider(result.provider.name())),
-            colors.red(&pad_status("taken"))
+            colors.red(&pad_status("taken")),
+            result.match_summary()
         ),
         Status::Unknown(error) => {
             println!(
@@ -79,19 +80,19 @@ fn print_provider_status(result: &ProviderResult) {
     }
 }
 
-fn print_matches(result: &ProviderResult, query: &str) {
+fn print_matches(result: &ProviderResult) {
     let colors = Colors;
-    let highlight = MatchHighlighter::new(result, query);
 
     for item in &result.matches {
-        let highlighted = highlight.matches(item);
+        let highlighted = item.exact;
         let name = highlighted_text(colors, &item.name, highlighted);
         let detail = item
             .detail
             .as_deref()
             .map(super::first_line)
             .filter(|text| !text.is_empty());
-        let prefix = colors.dim("  -");
+        let label = format!("  - {}", item.label());
+        let prefix = colors.dim(&label);
         match (&detail, &item.url) {
             (Some(detail), Some(url)) => {
                 println!(
@@ -129,72 +130,6 @@ fn print_matches(result: &ProviderResult, query: &str) {
 fn highlighted_text<'a>(colors: Colors, text: &'a str, highlighted: bool) -> ColoredText<'a> {
     let text = colors.bold(text);
     if highlighted { text.underlined() } else { text }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum MatchHighlighter<'a> {
-    None,
-    Exact { query: &'a str },
-    Detail { detail: &'a str },
-    First { first: &'a Match },
-}
-
-impl<'a> MatchHighlighter<'a> {
-    fn new(result: &'a ProviderResult, query: &'a str) -> Self {
-        let Status::Taken(detail) = &result.status else {
-            return Self::None;
-        };
-        if result
-            .matches
-            .iter()
-            .any(|item| name_matches_query(&item.name, query))
-        {
-            return Self::Exact { query };
-        }
-        if result
-            .matches
-            .iter()
-            .any(|item| status_detail_matches(item, detail))
-        {
-            return Self::Detail { detail };
-        }
-        result
-            .matches
-            .first()
-            .map_or(Self::None, |first| Self::First { first })
-    }
-
-    fn matches(self, item: &Match) -> bool {
-        match self {
-            Self::None => false,
-            Self::Exact { query } => name_matches_query(&item.name, query),
-            Self::Detail { detail } => status_detail_matches(item, detail),
-            Self::First { first } => std::ptr::eq(first, item),
-        }
-    }
-}
-
-fn name_matches_query(name: &str, query: &str) -> bool {
-    name.eq_ignore_ascii_case(query)
-        || name
-            .rsplit_once('/')
-            .is_some_and(|(_, suffix)| suffix.eq_ignore_ascii_case(query))
-        || name
-            .split(',')
-            .map(str::trim)
-            .any(|part| part.eq_ignore_ascii_case(query))
-}
-
-fn status_detail_matches(item: &Match, detail: &str) -> bool {
-    item.name == detail
-        || item.name.contains(&format!("({detail})"))
-        || item.url.as_deref() == Some(detail)
-        || detail
-            .strip_prefix("is provided by ")
-            .is_some_and(|package| package == item.name)
-        || detail
-            .rsplit_once(" is provided by ")
-            .is_some_and(|(_, package)| package == item.name)
 }
 
 fn pad_provider(text: &str) -> String {
