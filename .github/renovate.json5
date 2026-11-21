@@ -29,6 +29,11 @@
       addLabels: ["dependencies:major"],
     },
     {
+      matchManagers: ["cargo"],
+      matchDatasources: ["crate"],
+      minimumReleaseAge: "3 days",
+    },
+    {
       matchManagers: ["github-actions"],
       groupName: "github actions",
       labels: ["dependencies"],
